@@ -3,10 +3,12 @@ import WebRenderer from '@elemaudio/web-renderer';
 import { useAppStore, type EmitterPosition } from '../store/useAppStore';
 
 const FADE_MS = 1200;
-const BASE_HZ = 55;
-/** Chord ratios, one per emitter */
-const RATIOS = [1, 1.5, 2.0, 2.997];
-const SWELL_RATES = [0.061, 0.043, 0.077, 0.052];
+/** Swell rates (Hz) — each source breathes on its own 13–23 s cycle */
+const SWELL_RATES = [0.043, 0.061, 0.077, 0.052];
+/** Output trim per source; higher voices sit lower in the mix */
+const TRIMS = [0.11, 0.08, 0.06, 0.05];
+/** Filter headroom per source so high voices are not filtered away when far */
+const CUTOFF_SCALE = [1, 1.3, 2.5, 3.5];
 
 let ctx: AudioContext | null = null;
 let core: WebRenderer | null = null;
@@ -19,17 +21,42 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
 /** Smoothed control signal; keyed so re-renders only update the value. */
 const param = (key: string, value: number) => el.sm(el.const({ key, value }));
 
-/** Drone voice: two detuned saws + sine sub, slowly drifting, with a slow amplitude swell. */
-function voice(ratio: number, swellRate: number, seed: number) {
-  const drift = el.mul(el.cycle(0.07 + seed * 0.013), 0.004);
-  const f = el.mul(BASE_HZ * ratio, el.add(1, drift));
-  const detuned = el.mul(f, 1.0035 + seed * 0.001);
-  const swell = el.add(0.55, el.mul(el.cycle(swellRate), 0.45));
-  return el.mul(
-    swell,
-    el.add(el.mul(el.blepsaw(f), 0.5), el.mul(el.blepsaw(detuned), 0.5), el.mul(el.cycle(el.mul(f, 0.5)), 0.6)),
-  );
-}
+/** Slow drift multiplier around 1 */
+const drift = (rate: number, depth: number) => el.add(1, el.mul(el.cycle(rate), depth));
+
+/**
+ * Four distinct drones, each normalized to peak around 1 (before the swell):
+ * 0  A1 — deep, detuned saws with a sub
+ * 1  E2 — hollow, beating squares
+ * 2  B3 — soft triangles with a slow vibrato
+ * 3  F#4 — glassy sine partials with a shimmer tremolo
+ */
+const VOICES: (() => NodeRepr_t)[] = [
+  () => {
+    const f = el.mul(55, drift(0.07, 0.004));
+    return el.add(
+      el.mul(el.blepsaw(f), 0.4),
+      el.mul(el.blepsaw(el.mul(f, 1.0035)), 0.4),
+      el.mul(el.cycle(el.mul(f, 0.5)), 0.2),
+    );
+  },
+  () => {
+    const f = el.mul(82.41, drift(0.05, 0.003));
+    return el.add(el.mul(el.blepsquare(f), 0.5), el.mul(el.blepsquare(el.mul(f, 1.0021)), 0.5));
+  },
+  () => {
+    const f = el.mul(246.94, drift(4.5, 0.006), drift(0.09, 0.003));
+    return el.add(el.mul(el.bleptriangle(f), 0.6), el.mul(el.bleptriangle(el.mul(f, 2.003)), 0.4));
+  },
+  () => {
+    const f = el.mul(369.99, drift(0.11, 0.002));
+    const partials = el.add(el.cycle(f), el.mul(el.cycle(el.mul(f, 2.01)), 0.3), el.mul(el.cycle(el.mul(f, 3.003)), 0.15));
+    return el.mul(partials, drift(6.2, 0.25), 1 / 1.45 / 1.25);
+  },
+];
+
+/** 0.08..1 slow swell; this is the source's own volume, shown as its altitude */
+const swell = (rate: number) => el.add(0.54, el.mul(el.cycle(rate), 0.46));
 
 /**
  * Head-relative spatialization per emitter (position is in listener space, -z = ahead):
@@ -60,13 +87,12 @@ function buildGraph(positions: EmitterPosition[], gain: number) {
   const sendL: NodeRepr_t[] = [];
   const sendR: NodeRepr_t[] = [];
 
-  RATIOS.forEach((ratio, i) => {
+  VOICES.forEach((voice, i) => {
     const s = spatial(positions[i] ?? { x: 0, y: 0, z: -6 });
-    const fc = el.min(12000, el.mul(param(`fc${i}`, s.cutoff), breathe));
-    const mono = el.meter(
-      { name: `v${i}` },
-      el.mul(el.lowpass(fc, 0.9, voice(ratio, SWELL_RATES[i], i)), param(`g${i}`, s.gain), 0.09),
-    );
+    const fc = el.min(12000, el.mul(param(`fc${i}`, s.cutoff * CUTOFF_SCALE[i]), breathe));
+    // Meter before spatialization: it reports the source's own volume, independent of where you listen from
+    const source = el.meter({ name: `v${i}` }, el.mul(voice(), swell(SWELL_RATES[i])));
+    const mono = el.mul(el.lowpass(fc, 0.9, source), param(`g${i}`, s.gain), TRIMS[i]);
     const l = el.mul(mono, param(`l${i}`, s.left));
     const r = el.mul(mono, param(`r${i}`, s.right));
     const send = param(`s${i}`, s.send);
@@ -107,7 +133,7 @@ async function init() {
       store.setLevel(lerp(store.level, Math.min(1, peak * 2.2), 0.35));
     } else if (e.source?.startsWith('v')) {
       const i = Number(e.source.slice(1));
-      store.setVoiceLevel(i, lerp(store.voiceLevels[i] ?? 0, Math.min(1, peak * 6), 0.35));
+      store.setVoiceLevel(i, lerp(store.voiceLevels[i] ?? 0, Math.min(1, peak), 0.35));
     }
   });
 

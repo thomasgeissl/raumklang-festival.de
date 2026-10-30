@@ -35,9 +35,9 @@ const vertexShader = /* glsl */ `
     for (int i = 0; i < ${emitters.length}; i++) {
       vec3 e = uEmit[i];
       float d = distance(p.xz, e.xy);
-      ripple += sin(d * 2.6 - t * 3.0 + float(i) * 1.7) * exp(-d * 0.45) * (0.08 + e.z * 0.7);
-      ripple += exp(-d * d * 0.9) * (0.25 + e.z * 0.6);
-      glow += exp(-d * d * 0.35) * (0.3 + e.z);
+      ripple += sin(d * 2.6 - t * 3.0 + float(i) * 1.7) * exp(-d * 0.45) * (0.06 + e.z * 0.35);
+      ripple += exp(-d * d * 0.9) * (0.15 + e.z * 0.35);
+      glow += exp(-d * d * 0.35) * (0.3 + e.z * 0.6);
     }
 
     p.y += n * amp + fine * (0.4 + uLevel) + ripple;

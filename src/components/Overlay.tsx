@@ -54,8 +54,21 @@ export default function Overlay() {
         </Typography>
       </Stack>
 
-      <Stack spacing={2} sx={{ alignItems: 'center' }}>
-        <Stack direction="row" spacing={1.5} useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
+      <Stack
+        direction="row"
+        spacing={2}
+        useFlexGap
+        sx={{ justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap' }}
+      >
+        <Stack direction="row" spacing={2}>
+          <Link href={IMPRINT_URL} target="_blank" rel="noopener" variant="caption" color="text.secondary">
+            {t('imprint')}
+          </Link>
+          <Link href={PRIVACY_URL} target="_blank" rel="noopener" variant="caption" color="text.secondary">
+            {t('privacy')}
+          </Link>
+        </Stack>
+        <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', ml: 'auto' }}>
           <Typography variant="body2" color="text.secondary">
             {t('presentedBy')}
           </Typography>
@@ -68,14 +81,6 @@ export default function Overlay() {
           >
             {t('visitMucca')}
           </Button>
-        </Stack>
-        <Stack direction="row" spacing={2}>
-          <Link href={IMPRINT_URL} target="_blank" rel="noopener" variant="caption" color="text.secondary">
-            {t('imprint')}
-          </Link>
-          <Link href={PRIVACY_URL} target="_blank" rel="noopener" variant="caption" color="text.secondary">
-            {t('privacy')}
-          </Link>
         </Stack>
       </Stack>
     </Box>

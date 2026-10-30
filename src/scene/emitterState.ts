@@ -6,6 +6,8 @@ export interface Emitter {
   /** Current world position on the ground plane */
   x: number;
   z: number;
+  /** Current altitude above the field, driven by the source's volume */
+  y: number;
   /** Anchor the emitter wanders around when not dragged */
   homeX: number;
   homeZ: number;
@@ -15,6 +17,10 @@ export interface Emitter {
 }
 
 export const FIELD_Y = -1.4;
+/** Altitude range above the field: silent sources rest low, loud ones float high */
+export const ALTITUDE = { min: 0.25, max: 2.0 };
+/** Low tones glow deep orange, high tones pale amber */
+export const COLORS = ['#ff5a14', '#ff8a3d', '#ffb060', '#ffd9a0'];
 export const BOUNDS = { minX: -5, maxX: 5, minZ: -3.5, maxZ: 2.2 };
 
 // Spread across the open foreground, below the title
@@ -28,6 +34,7 @@ const initial: [number, number][] = [
 export const emitters: Emitter[] = initial.map(([x, z], i) => ({
   x,
   z,
+  y: 0,
   homeX: x,
   homeZ: z,
   seed: i * 1.7 + 0.3,

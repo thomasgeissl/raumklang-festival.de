@@ -3,9 +3,8 @@ import { useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
 import { Billboard } from '@react-three/drei';
 import * as THREE from 'three';
 import { useAppStore } from '../store/useAppStore';
-import { BOUNDS, FIELD_Y, cue, emitters, wander, xScale, type Emitter as EmitterState } from './emitterState';
+import { ALTITUDE, BOUNDS, COLORS, FIELD_Y, cue, emitters, wander, xScale, type Emitter as EmitterState } from './emitterState';
 
-const HOVER_Y = FIELD_Y + 0.7;
 const PUSH_INTERVAL = 1 / 15;
 /** Emitter that carries the "drag me" cue until the first interaction */
 const CUE_INDEX = 2;
@@ -45,7 +44,7 @@ const beamFragment = /* glsl */ `
   }
 `;
 
-const dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -HOVER_Y);
+const dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const hit = new THREE.Vector3();
 const projected = new THREE.Vector3();
 
@@ -58,12 +57,12 @@ function EmitterView({ state, index }: { state: EmitterState; index: number }) {
   const interacted = useAppStore((s) => s.interacted);
 
   const glowUniforms = useMemo(
-    () => ({ uColor: { value: new THREE.Color('#ffb060') }, uIntensity: { value: 1 }, uPulse: { value: 0 } }),
-    [],
+    () => ({ uColor: { value: new THREE.Color(COLORS[index]) }, uIntensity: { value: 1 }, uPulse: { value: 0 } }),
+    [index],
   );
   const beamUniforms = useMemo(
-    () => ({ uColor: { value: new THREE.Color('#ff8a3d') }, uIntensity: { value: 1 } }),
-    [],
+    () => ({ uColor: { value: new THREE.Color(COLORS[index]) }, uIntensity: { value: 1 } }),
+    [index],
   );
 
   const controls = useThree((s) => s.controls) as { enabled: boolean } | null;
@@ -71,6 +70,8 @@ function EmitterView({ state, index }: { state: EmitterState; index: number }) {
   const onDown = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
     if (controls) controls.enabled = false;
+    // Drag on a horizontal plane at the source's current altitude
+    if (group.current) dragPlane.constant = -group.current.position.y;
     (e.target as Element).setPointerCapture(e.pointerId);
     state.dragging = true;
     setDragging(true);
@@ -111,9 +112,14 @@ function EmitterView({ state, index }: { state: EmitterState; index: number }) {
 
     const level = useAppStore.getState().voiceLevels[index] ?? 0;
     const active = state.dragging ? 1 : hovered ? 0.6 : 0;
-    g.position.set(state.x * squeeze.current, HOVER_Y + Math.sin(time * 0.9 + state.seed) * 0.08 + active * 0.15, state.z);
+    // Altitude shows the source's own volume; held steady while dragging so the plane stays put
+    if (!state.dragging) {
+      const target = ALTITUDE.min + level * (ALTITUDE.max - ALTITUDE.min);
+      state.y = THREE.MathUtils.lerp(state.y, target, 1 - Math.pow(0.15, delta));
+    }
+    g.position.set(state.x * squeeze.current, FIELD_Y + state.y + Math.sin(time * 0.9 + state.seed) * 0.04, state.z);
 
-    const intensity = 0.7 + level * 1.6 + active * 0.6;
+    const intensity = 0.8 + level * 0.9 + active * 0.6;
     glowUniforms.uIntensity.value = THREE.MathUtils.lerp(glowUniforms.uIntensity.value, intensity, 0.15);
     beamUniforms.uIntensity.value = glowUniforms.uIntensity.value;
     glowUniforms.uPulse.value = ((time * 0.45 + state.seed) % 1) * (hovered || !interacted ? 1 : 0.0);
@@ -191,8 +197,8 @@ export default function Emitters() {
     acc.current = 0;
     const squeeze = xScale(viewport.aspect);
     useAppStore.getState().setEmitters(
-      emitters.map(({ x, z }) => {
-        local.set(x * squeeze, HOVER_Y, z).applyMatrix4(camera.matrixWorldInverse);
+      emitters.map(({ x, y, z }) => {
+        local.set(x * squeeze, FIELD_Y + y, z).applyMatrix4(camera.matrixWorldInverse);
         return { x: local.x, y: local.y, z: local.z };
       }),
     );
